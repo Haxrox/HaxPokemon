@@ -1,0 +1,68 @@
+name: CI
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  security-audit:
+    name: Secrets & Credentials Audit
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Verify no .env secrets committed
+        run: |
+          if [ -f .env ]; then
+            echo "::error::CRITICAL: .env file found in repository! Real secrets must never be committed."
+            exit 1
+          fi
+          echo "Verified: No .env file committed."
+
+      - name: Scan tracked files for token leaks
+        run: |
+          echo "Scanning tracked git files for sensitive tokens..."
+          LEAKS=$(git grep -EI '([A-Za-z0-9_-]{24}\.[A-Za-z0-9_-]{6}\.[A-Za-z0-9_-]{27})' -- ':!.env.example' || true)
+          if [ -n "$LEAKS" ]; then
+            echo "::error::Potential exposed token detected in tracked files:"
+            echo "$LEAKS"
+            exit 1
+          fi
+          echo "Verified: No credential tokens found in tracked files."
+
+  build-and-test:
+    name: Build & Test (Node ${{ matrix.node-version }})
+    runs-on: ubuntu-latest
+    needs: [security-audit]
+
+    strategy:
+      matrix:
+        node-version: [18.x, 20.x, 22.x]
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js ${{ matrix.node-version }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node-version }}
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build TypeScript project
+        run: npm run build
+
+      - name: Run Vitest Unit Tests
+        env:
+          DISCORD_BOT_TOKEN: dummy_token_for_ci
+          DISCORD_CLIENT_ID: "123456789012345678"
+          DATABASE_PATH: ":memory:"
+        run: npm test

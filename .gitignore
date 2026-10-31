@@ -6,8 +6,8 @@ dist/
 
 # Environment Variables (Keep your bot tokens secret!)
 .env
-.env.local
-.env.*.local
+.env.*
+!.env.example
 
 # SQLite Database and Persistent Storage
 data/
@@ -15,6 +15,10 @@ data/
 *.sqlite-journal
 *.sqlite-wal
 *.sqlite-shm
+tests/test_stock.sqlite
+
+# Test Coverage
+coverage/
 
 # Logs
 logs/
