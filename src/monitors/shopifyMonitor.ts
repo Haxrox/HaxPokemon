@@ -28,17 +28,29 @@ interface ShopifyProductsResponse {
 export class ShopifyMonitor extends BaseStoreMonitor {
   private collectionPath: string;
 
-  constructor(storeConfig: StoreConfig, collectionPath: string = '/products.json?limit=100') {
+  constructor(storeConfig: StoreConfig, collectionPath: string = '/collections/pokemon/products.json?limit=50') {
     super(storeConfig);
     this.collectionPath = collectionPath;
   }
 
   public async poll(): Promise<ProductStockItem[]> {
-    const url = `${this.storeConfig.baseUrl}${this.collectionPath}`;
+    let url = `${this.storeConfig.baseUrl}${this.collectionPath}`;
     const items: ProductStockItem[] = [];
 
     try {
-      const jsonText = await this.fetchSafe(url);
+      let jsonText: string;
+      try {
+        jsonText = await this.fetchSafe(url);
+      } catch (err: any) {
+        // If specific collection 404s, fall back to global products
+        if (this.collectionPath !== '/products.json?limit=50') {
+          url = `${this.storeConfig.baseUrl}/products.json?limit=50`;
+          jsonText = await this.fetchSafe(url);
+        } else {
+          throw err;
+        }
+      }
+
       const data: ShopifyProductsResponse = JSON.parse(jsonText);
 
       let inStockCount = 0;

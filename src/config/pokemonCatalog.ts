@@ -182,9 +182,45 @@ const FORMAT_MATCHERS: { format: ProductFormat; patterns: RegExp[] }[] = [
 ];
 
 /**
- * Filter out non-card merchandise to prevent alert noise
+/**
+ * Strict exclusions: other card games, sports cards, toys, apparel, digital games
  */
 const EXCLUSION_PATTERNS: RegExp[] = [
+  // Other card games / competing franchises
+  /\bmagic:?\s*the\s*gathering\b/i,
+  /\bmtg\b/i,
+  /\bone\s*piece\b/i,
+  /\byu-?gi-?oh\b/i,
+  /\byugioh\b/i,
+  /\blorcana\b/i,
+  /\bdisney\b/i,
+  /\bdigimon\b/i,
+  /\bdragon\s*ball\b/i,
+  /\bdbs\b/i,
+  /\bstar\s*wars\b/i,
+  /\bflesh\s*and\s*blood\b/i,
+  /\bfab\b/i,
+  /\bwarhammer\b/i,
+  /\bhockey\b/i,
+  /\bnhl\b/i,
+  /\bupper\s*deck\b/i,
+  /\btopps\b/i,
+  /\bpanini\b/i,
+  /\bbaseball\b/i,
+  /\bfootball\b/i,
+  /\bbasketball\b/i,
+  /\bnba\b/i,
+  /\bnfl\b/i,
+  /\bmlb\b/i,
+  /\bweiss\s*schwarz\b/i,
+  /\bunion\s*arena\b/i,
+  /\bcardfight\b/i,
+  /\bcyberpunk\b/i,
+  /\bgundam\b/i,
+  /\bsorcery\b/i,
+  /\bgrand\s*archive\b/i,
+  /\bstar\s*trek\b/i,
+  // Non-card merchandise
   /\bplush\b/i,
   /\bfigure\b/i,
   /\btoy\b/i,
@@ -199,7 +235,64 @@ const EXCLUSION_PATTERNS: RegExp[] = [
   /\bbinder\b(?!.*(?:collection|pack|booster|bundle))/i,
   /\bvideo game\b/i,
   /\bnintendo switch\b/i,
-  /\bkeychain\b/i
+  /\bkeychain\b/i,
+  /\bmug\b/i,
+  /\bblanket\b/i
+];
+
+/**
+ * Unambiguous, unique Pokémon set names
+ */
+const UNIQUE_POKEMON_SETS: RegExp[] = [
+  /prismatic evolutions/i,
+  /surging sparks/i,
+  /stellar crown/i,
+  /shrouded fable/i,
+  /twilight masquerade/i,
+  /temporal forces/i,
+  /paldean fates/i,
+  /paradox rift/i,
+  /obsidian flames/i,
+  /paldea evolved/i,
+  /scarlet & violet/i,
+  /scarlet and violet/i,
+  /crown zenith/i,
+  /silver tempest/i,
+  /lost origin/i,
+  /astral radiance/i,
+  /brilliant stars/i,
+  /fusion strike/i,
+  /evolving skies/i,
+  /chilling reign/i,
+  /battle styles/i,
+  /shining fates/i,
+  /vivid voltage/i,
+  /darkness ablaze/i,
+  /sword & shield/i,
+  /hidden fates/i
+];
+
+/**
+ * Major recognizable Pokémon characters
+ */
+const POKEMON_CHARACTERS: RegExp[] = [
+  /pikachu/i,
+  /charizard/i,
+  /eevee/i,
+  /mewtwo/i,
+  /snorlax/i,
+  /gengar/i,
+  /squirtle/i,
+  /bulbasaur/i,
+  /charmander/i,
+  /lucario/i,
+  /rayquaza/i,
+  /lugia/i,
+  /giratina/i,
+  /greninja/i,
+  /umbreon/i,
+  /sylveon/i,
+  /mew\b/i
 ];
 
 /**
@@ -208,27 +301,28 @@ const EXCLUSION_PATTERNS: RegExp[] = [
 export function isPokemonCardProduct(title: string): boolean {
   const lower = title.toLowerCase();
   
-  // Must mention pokemon or tcg or a recognizable set/product keyword
-  const hasPokemonKeyword = 
-    lower.includes('pokemon') || 
-    lower.includes('pokémon') || 
-    lower.includes('tcg') || 
-    POKEMON_SETS.some(s => s.aliases.some(a => lower.includes(a)));
-
-  if (!hasPokemonKeyword) {
-    return false;
-  }
-
-  // Must not match strictly non-card merchandise exclusions
+  // 1. Immediately reject any competing TCG or non-card goods
   for (const exclusion of EXCLUSION_PATTERNS) {
     if (exclusion.test(lower)) {
       return false;
     }
   }
 
-  // Must have card pack indicators
+  // 2. Must positively be confirmed as Pokémon:
+  // Either explicitly has "pokemon" / "pokémon"
+  // OR matches an unambiguous Pokemon set title (e.g. "Prismatic Evolutions Booster Bundle")
+  // OR matches a verified Pokemon character (e.g. "Charizard ex Premium Collection")
+  const hasExplicitPokemon = /\bpok[eé]mon\b/i.test(lower);
+  const hasUniquePokemonSet = UNIQUE_POKEMON_SETS.some(regex => regex.test(lower));
+  const hasPokemonCharacter = POKEMON_CHARACTERS.some(regex => regex.test(lower));
+
+  if (!hasExplicitPokemon && !hasUniquePokemonSet && !hasPokemonCharacter) {
+    return false;
+  }
+
+  // 3. Must be a card pack, bundle, box, or sealed TCG product
   const hasCardPackIndicator = 
-    /booster|pack|bundle|box|tin|collection|etb|blister|deck|card|display|upc/i.test(lower);
+    /booster|pack|bundle|box|tin|collection|etb|elite trainer|blister|deck|card|display|upc|ultra[- ]premium/i.test(lower);
 
   return hasCardPackIndicator;
 }

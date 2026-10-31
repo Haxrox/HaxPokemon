@@ -57,7 +57,7 @@ stockManager.addListener(async (event) => {
 });
 
 // 4. Polling Scheduler Engine with Jitter
-const timers: NodeJS.Timeout[] = [];
+const timers: ReturnType<typeof setTimeout>[] = [];
 
 function startPollingEngine() {
   console.log('[Scheduler] Starting stock polling loop...');
@@ -84,13 +84,16 @@ function startPollingEngine() {
 }
 
 async function runMonitorPoll(monitor: BaseStoreMonitor) {
+  if (monitor.shouldSkipDueToBackoff()) {
+    return;
+  }
   try {
     const products = await monitor.poll();
     if (products.length > 0) {
       await stockManager.processProductUpdates(products);
     }
-  } catch (err) {
-    console.error(`[Scheduler] Error during polling ${monitor.storeConfig.name}:`, err);
+  } catch (err: any) {
+    monitor.logErrorOnce(err.message || String(err));
   }
 }
 
@@ -102,7 +105,7 @@ if (token && token !== 'your_bot_token_here') {
     .then(() => {
       startPollingEngine();
     })
-    .catch((err) => {
+    .catch((err: any) => {
       console.error('[DiscordBot] Login failed:', err);
       console.log('[Scheduler] Running polling loop in standalone monitor mode without Discord connection.');
       startPollingEngine();

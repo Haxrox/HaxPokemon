@@ -65,7 +65,7 @@ export class GameStopMonitor extends BaseStoreMonitor {
       return items;
     } catch (err: any) {
       this.updateHealthError(err);
-      console.warn(`[GameStopMonitor] GameStop Canada: ${err.message || 'Network lookup issue, retrying next interval'}`);
+      this.logErrorOnce(err.message || 'DNS / Network lookup issue');
       return [];
     }
   }

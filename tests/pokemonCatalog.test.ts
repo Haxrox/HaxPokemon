@@ -23,6 +23,17 @@ describe('Pokemon Catalog & Filter Engine', () => {
     expect(isPokemonCardProduct('Pokemon 9-Pocket Trading Card Binder')).toBe(false);
   });
 
+  it('strictly rejects competing card games and franchises', () => {
+    expect(isPokemonCardProduct('Cyberpunk TCG - Welcome To Night City - Starter Deck - The Heist - French')).toBe(false);
+    expect(isPokemonCardProduct('League of Legends Riftbound TCG: Vendetta Booster Box')).toBe(false);
+    expect(isPokemonCardProduct('Union Arena TCG UE31BT ARKNIGHTS BOOSTER')).toBe(false);
+    expect(isPokemonCardProduct('Magic: The Gathering 30th Anniversary Edition Booster Box')).toBe(false);
+    expect(isPokemonCardProduct('One Piece TCG - Romance Dawn Booster Box')).toBe(false);
+    expect(isPokemonCardProduct('Disney Lorcana Rise of the Floodborn Booster Pack')).toBe(false);
+    expect(isPokemonCardProduct('Upper Deck 2024-25 Series 1 NHL Hockey Cards Box')).toBe(false);
+    expect(isPokemonCardProduct('Echoes of Astra TCG: Imperion - Booster Box')).toBe(false);
+  });
+
   it('correctly classifies product formats', () => {
     expect(identifyProductFormat('Scarlet & Violet: Prismatic Evolutions Booster Bundle')).toBe('BOOSTER_BUNDLE');
     expect(identifyProductFormat('Surging Sparks Elite Trainer Box (ETB)')).toBe('ELITE_TRAINER_BOX');

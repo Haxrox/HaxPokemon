@@ -105,7 +105,7 @@ export class PokemonCenterMonitor extends BaseStoreMonitor {
       return items;
     } catch (err: any) {
       this.updateHealthError(err);
-      console.warn(`[PokemonCenterMonitor] Pokémon Center Canada: ${err.message || 'Protected by Cloudflare'}`);
+      this.logErrorOnce(err.message || 'Protected by Imperva Incapsula WAF');
       return [];
     }
   }

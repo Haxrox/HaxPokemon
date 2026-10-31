@@ -60,7 +60,30 @@ export abstract class BaseStoreMonitor {
     return await res.text();
   }
 
+  protected consecutiveErrors = 0;
+  protected lastLoggedErrorTime = 0;
+
+  public shouldSkipDueToBackoff(): boolean {
+    if (this.consecutiveErrors >= 2) {
+      // Back off to checking once every 10 minutes instead of every 60-90s
+      const tenMinutes = 10 * 60 * 1000;
+      const lastPoll = new Date(this.health.lastPollTimestamp).getTime();
+      return (Date.now() - lastPoll) < tenMinutes;
+    }
+    return false;
+  }
+
+  public logErrorOnce(msg: string): void {
+    const now = Date.now();
+    // Only log if 10 minutes have passed since last log to prevent spamming terminal
+    if (now - this.lastLoggedErrorTime > 10 * 60 * 1000) {
+      console.warn(`[${this.constructor.name}] ${this.storeConfig.name}: ${msg} (backing off for 10m)`);
+      this.lastLoggedErrorTime = now;
+    }
+  }
+
   protected updateHealthSuccess(checkedCount: number, inStockCount: number): void {
+    this.consecutiveErrors = 0;
     this.health.status = 'ONLINE';
     this.health.lastPollTimestamp = new Date().toISOString();
     this.health.totalProductsChecked = checkedCount;
@@ -69,6 +92,7 @@ export abstract class BaseStoreMonitor {
   }
 
   protected updateHealthError(err: any): void {
+    this.consecutiveErrors++;
     this.health.status = 'ERROR';
     this.health.lastPollTimestamp = new Date().toISOString();
     this.health.lastErrorMessage = err instanceof Error ? err.message : String(err);

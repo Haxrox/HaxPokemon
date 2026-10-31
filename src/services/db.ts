@@ -81,11 +81,31 @@ export class StockDatabase {
       ON alert_records(product_sku, store_id, location_name, is_active);
     `);
 
-    // Clean up corrupted URLs and purge glitched prices from prior runs
+    // Clean up corrupted URLs, purge glitched prices, and remove any legacy non-Pokemon rows
     try {
       this.db.exec(`
         UPDATE products SET url = replace(url, '/en/en/', '/en/') WHERE url LIKE '%/en/en/%';
         DELETE FROM products WHERE price > 600 OR price <= 0;
+        DELETE FROM alert_records WHERE product_sku IN (
+          SELECT sku FROM products WHERE 
+            lower(title) LIKE '%cyberpunk%' OR 
+            lower(title) LIKE '%riftbound%' OR 
+            lower(title) LIKE '%union arena%' OR 
+            lower(title) LIKE '%echoes of astra%' OR 
+            lower(title) LIKE '%soul masters%' OR
+            lower(title) LIKE '%magic: the gathering%' OR
+            lower(title) LIKE '%lorcana%' OR
+            lower(title) LIKE '%one piece%'
+        );
+        DELETE FROM products WHERE 
+          lower(title) LIKE '%cyberpunk%' OR 
+          lower(title) LIKE '%riftbound%' OR 
+          lower(title) LIKE '%union arena%' OR 
+          lower(title) LIKE '%echoes of astra%' OR 
+          lower(title) LIKE '%soul masters%' OR
+          lower(title) LIKE '%magic: the gathering%' OR
+          lower(title) LIKE '%lorcana%' OR
+          lower(title) LIKE '%one piece%';
       `);
     } catch {}
   }

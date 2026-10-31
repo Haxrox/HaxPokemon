@@ -3,107 +3,69 @@ import * as cheerio from 'cheerio';
 import { ProductStockItem, StoreConfig } from '../types/index.js';
 import { BaseStoreMonitor } from './base.js';
 
-export class WooCommerceMonitor extends BaseStoreMonitor {
-  private categoryPath: string;
+interface WcStoreProduct {
+  id: number;
+  name: string;
+  permalink: string;
+  sku: string;
+  is_in_stock: boolean;
+  prices: {
+    price: string;
+    currency_code: string;
+    currency_minor_unit: number;
+  };
+  images: { src: string }[];
+}
 
-  constructor(storeConfig: StoreConfig, categoryPath: string = '/product-category/pokemon/') {
+export class WooCommerceMonitor extends BaseStoreMonitor {
+  private apiEndpoint: string;
+
+  constructor(storeConfig: StoreConfig, apiEndpoint: string = '/wp-json/wc/store/v1/products?search=pokemon&per_page=50') {
     super(storeConfig);
-    this.categoryPath = categoryPath;
+    this.apiEndpoint = apiEndpoint;
   }
 
   public async poll(): Promise<ProductStockItem[]> {
-    const url = `${this.storeConfig.baseUrl}${this.categoryPath}`;
+    const url = `${this.storeConfig.baseUrl}${this.apiEndpoint}`;
     const items: ProductStockItem[] = [];
 
+    // 1. Primary Strategy: WooCommerce Store API (Bypasses Cloudflare HTML Bot Challenge)
     try {
-      const html = await this.fetchSafe(url);
-      const $ = cheerio.load(html);
-
-      let inStockCount = 0;
-
-      // 1. First attempt: Parse Schema.org JSON-LD microdata if present
-      $('script[type="application/ld+json"]').each((_, elem) => {
-        try {
-          const json = JSON.parse($(elem).html() || '{}');
-          const products = json['@graph'] || (Array.isArray(json) ? json : [json]);
-
-          for (const item of products) {
-            if (item['@type'] === 'Product' || item['@type'] === 'IndividualProduct') {
-              const offer = item.offers?.[0] || item.offers;
-              const inStock = offer?.availability?.includes('InStock') ?? true;
-              const price = parseFloat(offer?.price) || 0;
-              const sku = item.sku || item['@id'] || `${item.name}`;
-
-              if (inStock) inStockCount++;
-
-              items.push({
-                sku: `${this.storeConfig.id}-${sku}`,
-                storeId: this.storeConfig.id,
-                title: item.name,
-                url: offer?.url || item.url || url,
-                imageUrl: item.image?.url || (typeof item.image === 'string' ? item.image : undefined),
-                price,
-                currency: offer?.priceCurrency || 'CAD',
-                inStock,
-                locationName: 'Zephyr Epic (Surrey Flagship & Online)',
-                sellerName: 'Zephyr Epic',
-                isOfficialSeller: true,
-                lastChecked: new Date().toISOString()
-              });
-            }
-          }
-        } catch {
-          // Continue to HTML fallback
-        }
+      const jsonText = await this.fetchSafe(url, {
+        'Accept': 'application/json',
+        'Referer': this.storeConfig.baseUrl
       });
 
-      // 2. If JSON-LD didn't yield products, parse WooCommerce HTML product cards
-      if (items.length === 0) {
-        $('li.product, .product-item, div.product').each((idx, elem) => {
-          const el = $(elem);
-          const linkEl = el.find('.woocommerce-LoopProduct-link, a.woocommerce-loop-product__link, a[href*="/product/"]').first();
-          const title = el.find('.woocommerce-loop-product__title, h2.product-title, .title').text().trim();
-          const productUrl = linkEl.attr('href') || url;
-          const image = el.find('img').first().attr('src') || el.find('img').first().attr('data-src');
-          
-          // Price parsing (e.g. "$49.99" or "<ins>$39.99</ins>")
-          const priceText = el.find('ins .woocommerce-Price-amount, .woocommerce-Price-amount, .price').first().text();
-          const price = parseFloat(priceText.replace(/[^0-9.]/g, '')) || 0;
+      const products: WcStoreProduct[] = JSON.parse(jsonText);
+      let inStockCount = 0;
 
-          // Out-of-stock indicators in WooCommerce
-          const isOutOfStock = 
-            el.hasClass('outofstock') || 
-            el.find('.out-of-stock, .badge-out-of-stock').length > 0 ||
-            /sold out|out of stock/i.test(el.text());
+      for (const p of products) {
+        const minorUnit = p.prices.currency_minor_unit ?? 2;
+        const rawPrice = parseFloat(p.prices.price) || 0;
+        const price = minorUnit > 0 ? rawPrice / Math.pow(10, minorUnit) : rawPrice;
+        const inStock = Boolean(p.is_in_stock);
+        if (inStock) inStockCount++;
 
-          const inStock = !isOutOfStock;
-          if (inStock) inStockCount++;
-
-          const sku = `${this.storeConfig.id}-${idx}-${title.substring(0, 15).replace(/\s+/g, '')}`;
-
-          if (title) {
-            items.push({
-              sku,
-              storeId: this.storeConfig.id,
-              title,
-              url: productUrl,
-              imageUrl: image,
-              price,
-              currency: 'CAD',
-              inStock,
-              locationName: 'Zephyr Epic (Surrey Flagship & Online)',
-              sellerName: 'Zephyr Epic',
-              isOfficialSeller: true,
-              lastChecked: new Date().toISOString()
-            });
-          }
+        items.push({
+          sku: `${this.storeConfig.id}-${p.sku || p.id}`,
+          storeId: this.storeConfig.id,
+          title: p.name,
+          url: p.permalink,
+          imageUrl: p.images?.[0]?.src,
+          price,
+          currency: p.prices.currency_code || 'CAD',
+          inStock,
+          locationName: 'Zephyr Epic (Surrey Flagship & Online)',
+          sellerName: 'Zephyr Epic',
+          isOfficialSeller: true,
+          lastChecked: new Date().toISOString()
         });
       }
 
       this.updateHealthSuccess(items.length, inStockCount);
       return items;
-    } catch (err: any) {
-      // Fallback: Attempt RSS Feed parsing (Cloudflare typically permits RSS XML feeds)
+    } catch (apiErr: any) {
+      // 2. Fallback: Parse XML Feed if Store API fails
       try {
         const feedUrl = `${this.storeConfig.baseUrl}/product-category/pokemon/feed/`;
         const xml = await this.fetchSafe(feedUrl);
@@ -137,8 +99,8 @@ export class WooCommerceMonitor extends BaseStoreMonitor {
         }
       } catch {}
 
-      this.updateHealthError(err);
-      console.warn(`[WooCommerceMonitor] ${this.storeConfig.name}: ${err.message || 'Access limited by Cloudflare'}`);
+      this.updateHealthError(apiErr);
+      this.logErrorOnce(apiErr.message || 'Access blocked by Cloudflare');
       return [];
     }
   }
